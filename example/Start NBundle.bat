@@ -1,0 +1,1 @@
+nbundle.exe --dir L:\Projects\NBundle\nbundle\example\source --output L:\Projects\NBundle\nbundle\example\bundled.js
