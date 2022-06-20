@@ -109,6 +109,7 @@ fn build(file: &String, dir: &String, last_builds: &mut HashMap<String, String>)
 
     let content = std::fs::read_to_string(&path)?;
     let mut content_processed = content.clone();
+    let mut flag_used_nbundle_build_data=false;
 
     // String match
     let re = Regex::new(r#"[",',`]#([\S!#,\s]*?)#[",',`]"#)?;
@@ -125,6 +126,7 @@ fn build(file: &String, dir: &String, last_builds: &mut HashMap<String, String>)
         let result = parse_pattern(&pattern.to_string(), dir, &path, last_builds)?;
         if file.ends_with(".js") {
             let key = format!("nbundle-string-match-<{}>", Uuid::new_v4());
+            flag_used_nbundle_build_data=true;
             data_json[&key] = serde_json::Value::String(result);
 
             content_processed = content_processed.replace(
@@ -152,23 +154,23 @@ fn build(file: &String, dir: &String, last_builds: &mut HashMap<String, String>)
         content_processed = content_processed.replace(replacer, &result);
     }
 
-    // Normal match
-    let re = Regex::new(r#"#([\S!#,\s]*?)#"#)?;
+    // // Normal match
+    // let re = Regex::new(r#"#([\S!#,\s]*?)#"#)?;
 
-    for capt in re.captures_iter(&content) {
-        let replacer = capt
-            .get(0)
-            .context(format!("Get pattern error at file {}", &file))?
-            .as_str();
-        let pattern = capt
-            .get(1)
-            .context(format!("Get pattern error at file {}", &file))?
-            .as_str();
-        let result = parse_pattern(&pattern.to_string(), dir, &path, last_builds)?;
-        content_processed = content_processed.replace(replacer, &format!("\"{}\"", result));
-    }
+    // for capt in re.captures_iter(&content) {
+    //     let replacer = capt
+    //         .get(0)
+    //         .context(format!("Get pattern error at file {}", &file))?
+    //         .as_str();
+    //     let pattern = capt
+    //         .get(1)
+    //         .context(format!("Get pattern error at file {}", &file))?
+    //         .as_str();
+    //     let result = parse_pattern(&pattern.to_string(), dir, &path, last_builds)?;
+    //     content_processed = content_processed.replace(replacer, &format!("\"{}\"", result));
+    // }
 
-    if file.ends_with(".js") {
+    if file.ends_with(".js")&&flag_used_nbundle_build_data {
         content_processed = format!(
             "window['nbundle-build-{}']={}; // NBundle Datas\n\n{}",
             build_id,
@@ -191,14 +193,33 @@ fn parse_pattern(
         .next()
         .context(format!("Get pattern error at file {}", &file))?;
     match command {
-        "require" => build(
-            &patterns
-                .next()
-                .context(format!("Get pattern error at file {}", &file))?
-                .to_string(),
-            dir,
-            last_builds,
-        ),
+        "require" => {
+            let file=&patterns
+            .next()
+            .context(format!("Get pattern error at file {}", &file))?
+            .to_string();
+            let result = build(
+                file,
+                dir,
+                last_builds,
+            )?;
+            if file.ends_with(".js") {
+                Ok(format!("(function(){{{}}})()", result))
+            } else {
+                Ok(format!("{}", result))
+            }
+        }
+        "raw_require" => {
+            let result = build(
+                &patterns
+                    .next()
+                    .context(format!("Get pattern error at file {}", &file))?
+                    .to_string(),
+                dir,
+                last_builds,
+            )?;
+            Ok(format!("{}", result))
+        }
         _ => bail!(format!("Unknown pattern {} in file {}", command, file)),
     }
 }
